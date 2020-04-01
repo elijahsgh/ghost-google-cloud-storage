@@ -1,26 +1,39 @@
 'use strict';
 
-var storage     = require('@google-cloud/storage'),
-    BaseStore   = require('ghost-storage-base'),
-    Promise     = require('bluebird'),
-    path        = require('path'),
-    options     = {};
+const storage        = require('@google-cloud/storage'),
+      Promise        = require('bluebird'),
+      path           = require('path'),
+      BaseAdapter    = require('ghost-storage-base'),
+      activeTheme    = require(path.join(process.cwd(), 'current/core/frontend/services/themes/active')),
+      fs             = require('fs-extra'),
+      imageTransform = require('@tryghost/image-transform');
 
-class GStore extends BaseStore {
+class GStore extends BaseAdapter {
     constructor(config = {}){
         super(config);
-        options = config;
+
         var gcs = storage({
-            projectId: options.projectId,
-            keyFilename: options.key
+            projectId: config.projectId,
+            keyFilename: config.key
         });
-        this.bucket = gcs.bucket(options.bucket);
-        this.assetDomain = options.assetDomain || `storage.googleapis.com/${options.bucket}/`;
-        if(options.hasOwnProperty('assetDomain')){
-            this.insecure = options.insecure;
+        this.bucket = gcs.bucket(config.bucket);
+        this.assetDomain = config.assetDomain || `storage.googleapis.com/${config.bucket}`;
+        this.assetPath = config.assetPath || '/';
+
+        if(config.hasOwnProperty('assetDomain')) {
+            if(!this.assetDomain.endsWith('/')) {
+                this.assetDomain = this.assetDomain + '/';
+            }
+            this.insecure = config.insecure;
+        }
+        
+        if(config.hasOwnProperty('assetPath')) {
+            if(!this.assetPath.endsWith('/')) {
+                this.assetPath = this.assetPath + '/';
+            }
         }
         // default max-age is 3600 for GCS, override to something more useful
-        this.maxAge = options.maxAge || 2678400;
+        this.maxAge = config.maxAge || 2678400;
     }
 
     /**
@@ -30,10 +43,20 @@ class GStore extends BaseStore {
      * @returns {*}
      */
     save(image, targetDir) {
-        if (!options) return Promise.reject('google cloud storage is not configured');
         var targetDir = this.getTargetDir(),
             googleStoragePath = `http${this.insecure?'':'s'}://${this.assetDomain}`;
         var targetFilenameOut=null;
+        var assetPath = this.assetPath;
+
+        const imageSizes = activeTheme.get().config('image_sizes');
+
+        const imageDimensions = Object.keys(imageSizes).reduce((dimensions, size) => {
+            const {width, height} = imageSizes[size];
+            const dimension = (width ? 'w' + width : '') + (height ? 'h' + height : '');
+            return Object.assign({
+                [dimension]: imageSizes[size]
+            }, dimensions);
+        }, {});
 
         return new Promise((resolve, reject) => {
             this.getUniqueFileName(image, targetDir).then(targetFilename => {
@@ -44,8 +67,21 @@ class GStore extends BaseStore {
                     fileNamePath=targetFilename;
                 }
                 targetFilenameOut=fileNamePath;
+
+                console.log("Filename out? " + targetFilenameOut);
+                console.log(assetPath + 'size/' + Object.keys(imageDimensions)[0] + '/' + targetFilenameOut);
+
+                if(!targetFilename.includes('_o.')) {
+                    var data = fs.readFileSync(image.path);
+                    console.log("Data is " + data);
+                    Object.keys(imageDimensions).map(imageDimension => {
+                        console.log(imageDimension);
+                        this.saveRaw(imageTransform.resizeFromBuffer(data, imageDimensions[imageDimension]), assetPath + 'size/' + imageDimension + '/' + targetFilenameOut);
+                    });
+                }
+
                 var opts = {
-                    destination: fileNamePath,
+                    destination: targetFilenameOut,
                     metadata: {
                         cacheControl: `public, max-age=${this.maxAge}`
                     },
@@ -53,11 +89,44 @@ class GStore extends BaseStore {
                 };
                 return this.bucket.upload(image.path, opts);
             }).then(function (data) {
-                return resolve( googleStoragePath  + targetFilenameOut);
+                return resolve( googleStoragePath + assetPath + targetFilenameOut);
             }).catch(function (e) {
                 return reject(e);
             });
         });
+    }
+
+    /**
+     * Saves a buffer in the targetPath
+     * - buffer is an instance of Buffer
+     * - returns a Promise which returns the full URL to retrieve the data
+     */
+    saveRaw(buffer, targetPath) {
+        const targetDir = path.dirname(targetPath);
+        const googleStoragePath = `http${this.insecure?'':'s'}://${this.assetDomain}`;
+
+        console.log('Google storage saveRaw ' + targetPath);
+
+        return fs.mkdirs(targetDir)
+            .then(() => {
+                console.log("Buffer in saveraw is: " + typeof(buffer));
+                return fs.writeFileSync(targetPath, buffer);
+            })
+            .then(() => {
+                console.log('Saving ' + targetPath);
+                var opts = {
+                    destination: targetPath,
+                    metadata: {
+                        cacheControl: `public, max-age=${this.maxAge}`
+                    },
+                    public: true                    
+                };
+                this.bucket.upload(targetPath, opts);
+            })
+            .then(() => {
+                console.log('Returned ' + googleStoragePath + targetPath);
+                return googleStoragePath + targetPath;
+            });
     }
 
     // middleware for serving the files
@@ -77,7 +146,7 @@ class GStore extends BaseStore {
     }
 
     read (filename) {
-        const googleStoragePath = `http${this.insecure?'':'s'}://${this.assetDomain}`;
+        const googleStoragePath = `http${this.insecure?'':'s'}://${this.assetDomain}${this.assetPath}`;
         if(typeof filename.path !== 'undefined') {
             filename=filename.path;
         }
