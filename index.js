@@ -68,20 +68,17 @@ class GStore extends BaseAdapter {
                 }
                 targetFilenameOut=fileNamePath;
 
-                console.log("Filename out? " + targetFilenameOut);
-                console.log(assetPath + 'size/' + Object.keys(imageDimensions)[0] + '/' + targetFilenameOut);
-
                 if(!targetFilename.includes('_o.')) {
                     var data = fs.readFileSync(image.path);
-                    console.log("Data is " + data);
                     Object.keys(imageDimensions).map(imageDimension => {
-                        console.log(imageDimension);
-                        this.saveRaw(imageTransform.resizeFromBuffer(data, imageDimensions[imageDimension]), assetPath + 'size/' + imageDimension + '/' + targetFilenameOut);
+                        imageTransform.resizeFromBuffer(data, imageDimensions[imageDimension]).then((transformed) => {
+                            this.saveRaw(transformed, assetPath + 'size/' + imageDimension + '/' + targetFilenameOut);
+                        });
                     });
                 }
 
                 var opts = {
-                    destination: targetFilenameOut,
+                    destination: this.assetPath + targetFilenameOut,
                     metadata: {
                         cacheControl: `public, max-age=${this.maxAge}`
                     },
@@ -105,15 +102,11 @@ class GStore extends BaseAdapter {
         const targetDir = path.dirname(targetPath);
         const googleStoragePath = `http${this.insecure?'':'s'}://${this.assetDomain}`;
 
-        console.log('Google storage saveRaw ' + targetPath);
-
         return fs.mkdirs(targetDir)
             .then(() => {
-                console.log("Buffer in saveraw is: " + typeof(buffer));
-                return fs.writeFileSync(targetPath, buffer);
+                return fs.writeFile(targetPath, buffer);
             })
             .then(() => {
-                console.log('Saving ' + targetPath);
                 var opts = {
                     destination: targetPath,
                     metadata: {
@@ -124,7 +117,6 @@ class GStore extends BaseAdapter {
                 this.bucket.upload(targetPath, opts);
             })
             .then(() => {
-                console.log('Returned ' + googleStoragePath + targetPath);
                 return googleStoragePath + targetPath;
             });
     }
@@ -146,15 +138,23 @@ class GStore extends BaseAdapter {
     }
 
     read (filename) {
-        const googleStoragePath = `http${this.insecure?'':'s'}://${this.assetDomain}${this.assetPath}`;
+        const googleStoragePath = `http${this.insecure?'':'s'}://${this.assetDomain}`;
+        
         if(typeof filename.path !== 'undefined') {
             filename=filename.path;
         }
         if(filename.indexOf(googleStoragePath) !== -1){
             filename=filename.replace(googleStoragePath, '');
         }
+
+        if(this.assetPath.endsWith('/') && filename.startsWith('/')) {
+            filename = filename.substr(1);
+        }
+        
+        console.log("Read " + this.assetPath + filename);
+
         try {
-            var rs = this.bucket.file(filename);
+            var rs = this.bucket.file(this.assetPath + filename);
             return new Promise(function (resolve, reject) {
                 rs.download()
                     .then(function(data){
