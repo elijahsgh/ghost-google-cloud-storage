@@ -117,6 +117,9 @@ class GStore extends BaseAdapter {
                 this.bucket.upload(targetPath, opts);
             })
             .then(() => {
+                fs.unlink(targetPath);
+            })
+            .then(() => {
                 return googleStoragePath + targetPath;
             });
     }
