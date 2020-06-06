@@ -69,7 +69,7 @@ class GStore extends BaseAdapter {
                 targetFilenameOut=fileNamePath;
 
                 if(!targetFilename.includes('_o.')) {
-                    var data = fs.readFileSync(image.path);
+                    var data = await fs.readFile(image.path);
                     Object.keys(imageDimensions).map(imageDimension => {
                         imageTransform.resizeFromBuffer(data, imageDimensions[imageDimension]).then((transformed) => {
                             this.saveRaw(transformed, assetPath + 'size/' + imageDimension + '/' + targetFilenameOut);
@@ -84,8 +84,11 @@ class GStore extends BaseAdapter {
                     },
                     public: true
                 };
-                return this.bucket.upload(image.path, opts);
-            }).then(function (data) {
+                this.bucket.upload(image.path, opts, function() {
+                    fs.unlink(image.path);
+                });
+                
+            }).then(function () {
                 return resolve( googleStoragePath + assetPath + targetFilenameOut);
             }).catch(function (e) {
                 return reject(e);
@@ -104,21 +107,20 @@ class GStore extends BaseAdapter {
 
         return fs.mkdirs(targetDir)
             .then(() => {
-                return fs.writeFile(targetPath, buffer);
-            })
-            .then(() => {
-                var opts = {
-                    destination: targetPath,
-                    metadata: {
-                        cacheControl: `public, max-age=${this.maxAge}`
-                    },
-                    public: true                    
-                };
-		console.log("Uploading " + targetPath + " with Google Adapter");
-                this.bucket.upload(targetPath, opts);
-            })
-            .then(() => {
-                fs.unlink(targetPath);
+                fs.writeFile(targetPath, buffer, (err) => {
+                    console.log("Saving " + targetPath + " resulted in " + err);
+                    var opts = {
+                        destination: targetPath,
+                        metadata: {
+                            cacheControl: `public, max-age=${this.maxAge}`
+                        },
+                        public: true                    
+                    };
+                    this.bucket.upload(targetPath, opts, (err, file) => {
+                        console.log("Uploading " + file + " resulted in " + err);
+                        fs.unlink(targetPath);
+                    });
+                });
             })
             .then(() => {
                 return googleStoragePath + targetPath;
