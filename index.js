@@ -69,7 +69,7 @@ class GStore extends BaseAdapter {
                 targetFilenameOut=fileNamePath;
 
                 if(!targetFilename.includes('_o.')) {
-                    var data = await fs.readFile(image.path);
+                    var data = fs.readFileSync(image.path);
                     Object.keys(imageDimensions).map(imageDimension => {
                         imageTransform.resizeFromBuffer(data, imageDimensions[imageDimension]).then((transformed) => {
                             this.saveRaw(transformed, assetPath + 'size/' + imageDimension + '/' + targetFilenameOut);
