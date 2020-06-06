@@ -84,7 +84,9 @@ class GStore extends BaseAdapter {
                     },
                     public: true
                 };
-                this.bucket.upload(image.path, opts, function() {
+
+                this.bucket.upload(image.path, opts, (err, file) => {
+                    console.log("Upload normal image " + this.assetPath + targetFilenameOut + " resulted in " + err);
                     fs.unlink(image.path);
                 });
                 
