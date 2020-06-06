@@ -68,15 +68,6 @@ class GStore extends BaseAdapter {
                 }
                 targetFilenameOut=fileNamePath;
 
-                if(!targetFilename.includes('_o.')) {
-                    var data = fs.readFileSync(image.path);
-                    Object.keys(imageDimensions).map(imageDimension => {
-                        imageTransform.resizeFromBuffer(data, imageDimensions[imageDimension]).then((transformed) => {
-                            this.saveRaw(transformed, assetPath + 'size/' + imageDimension + '/' + targetFilenameOut);
-                        });
-                    });
-                }
-
                 var opts = {
                     destination: this.assetPath + targetFilenameOut,
                     metadata: {
@@ -86,10 +77,18 @@ class GStore extends BaseAdapter {
                 };
 
                 this.bucket.upload(image.path, opts, (err, file) => {
+                    console.log("Attempted upload " + image.path);
                     console.log("Upload normal image " + this.assetPath + targetFilenameOut + " resulted in " + err);
-                    fs.unlink(image.path);
                 });
-                
+
+                if(!targetFilename.includes('_o.')) {
+                    var data = fs.readFileSync(image.path);
+                    Object.keys(imageDimensions).map(imageDimension => {
+                        imageTransform.resizeFromBuffer(data, imageDimensions[imageDimension]).then((transformed) => {
+                            this.saveRaw(transformed, assetPath + 'size/' + imageDimension + '/' + targetFilenameOut);
+                        });
+                    });
+                }               
             }).then(function () {
                 return resolve( googleStoragePath + assetPath + targetFilenameOut);
             }).catch(function (e) {
@@ -119,7 +118,7 @@ class GStore extends BaseAdapter {
                         public: true                    
                     };
                     this.bucket.upload(targetPath, opts, (err, file) => {
-                        console.log("Uploading " + file + " resulted in " + err);
+                        console.log("Uploading " + targetPath + " resulted in " + err);
                         fs.unlink(targetPath);
                     });
                 });
