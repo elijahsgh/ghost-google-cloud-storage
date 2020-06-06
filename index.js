@@ -114,7 +114,7 @@ class GStore extends BaseAdapter {
                     },
                     public: true                    
                 };
-		console.log("Uploading " + targetPath);
+		console.log("Uploading " + targetPath + " with Google Adapter");
                 this.bucket.upload(targetPath, opts);
             })
             .then(() => {
